@@ -73,7 +73,7 @@ To help visualize the room arrangement a few different view options are provided
 - Install the modding API and Randomizer4.0
 - If needed: crack open `Mod/TangledMapView.csproj` and make sure the paths to the Hollow Knight installation match up with your installation
 - Build `Mod/TangledMapView.csproj`
-- Copy/symlink/etc. `Mod/bin/(Debug or Release)/TangledMapView.dll` to your mods directory.
+- Copy/symlink/etc. `Mod/bin/.../TangledMapView.dll` into `hollow_knight_Data/Managed/Mods/TangledMapView`.
 
 
 ## Data Build
