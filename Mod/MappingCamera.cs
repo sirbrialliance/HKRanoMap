@@ -23,10 +23,16 @@ public class MappingCamera : MonoBehaviour {
 	/// GameObject layer we use for our purposes.
 	/// </summary>
 	public const int Layer = 6;
-	public const float MapTileScale = 10f;//how world size is scaled to pixel size in exported tiles
+	/// <summary>
+	/// How world size is scaled to pixel size in exported tiles.
+	/// Bigger numbers=higher resolution tiles.
+	/// </summary>
+	public const float MapTileScale = 20f;
 	public const float LiveViewZoom = 100;
 
 	public static MappingCamera Create(TangledMapViewMod mod) {
+		mod.LogDebug("Creating MappingCamera");
+
 		Display.displays[1].Activate();
 		Display.displays[1].SetParams(1920, 1080, 0, 0);
 
@@ -153,15 +159,20 @@ public class MappingCamera : MonoBehaviour {
 		}
 	}
 
-
 	private IEnumerator CleanupView() {
 		if (!Hero) yield break;
 
-		//Thanks to DebugMod for showing us what needs to happen.
+		// mod.Log($"CleanupView state: {Hero.transitionState} and isT {Hero.cState.transitioning}");
+
+		while (Hero.cState.transitioning) {
+			yield return null;
+		}
+
 		yield return null;
 		yield return null;
 		yield return null;
 
+		//Thanks to DebugMod for showing us what needs to happen.
 		Hero.vignette.enabled = false;
 
 		heroLights.Clear();

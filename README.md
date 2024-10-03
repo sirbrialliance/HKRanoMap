@@ -85,6 +85,7 @@ Map:
 - Start game, load an unrandomized save
 - Enable noclip and invincible via DebugMod
 - ctrl+shift+F11
+	- If you get stuck and it doesn't start marching through scenes, restart the game and try moving between levels before hitting ctrl+shift+F11.
 - Get lunch
 - Inspect [hollow knight dir]/MappingTiles
 
