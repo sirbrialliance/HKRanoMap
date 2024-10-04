@@ -14,8 +14,7 @@ def processData(tile: str):
 
 def getTileNames():
 	# TileHandler.DEBUG_IMAGE = True
-	# yield "Hive_04"
-	# yield "Hive_05"
+	# yield "Crossroads_10"
 	# return
 
 

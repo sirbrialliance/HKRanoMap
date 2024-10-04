@@ -1,6 +1,7 @@
 import json
 
 import cv2 as cv # apt install python3-opencv
+import numpy
 import numpy as np
 from matplotlib import pyplot
 
@@ -16,12 +17,16 @@ def linearToGamma(v):
 	if v >= 0.0031308: return 1.055 * pow(v, (1.0/2.4)) - 0.055
 	else: return 12.92 * v
 
+def lerp(v, aMin, aMax, bMin, bMax):
+	return ((bMax - bMin) * v + aMax * bMin - aMin * bMax) / (aMax - aMin)
+
 linearLUT = np.asarray([gammaToLinear(v / 255) * 255 for v in range(0, 256)], dtype=np.uint8)
 gammaLUT = np.asarray([linearToGamma(v / 255) * 255 for v in range(0, 256)], dtype=np.uint8)
 
 class TileHandler:
 	image: np.ndarray
 	_debugIdx = 1
+	logicalImageSize: (int, int) # size to use for pixel<->world conversions
 
 	def __init__(self, tileName):
 		super().__init__()
@@ -30,30 +35,89 @@ class TileHandler:
 		self.image = cv.imread(tileName + ".png", cv.IMREAD_UNCHANGED)
 		if self.image is None: raise FileNotFoundError(f"Failed to read image {tileName}.png")
 
+		self.logicalImageSize = (self.image.shape[1], self.image.shape[0])
+
 		with open(tileName + ".json", "r") as f:
 			self.data = json.load(f)
 
-		if DEBUG_IMAGE: pyplot.figure(dpi=240)
+		if DEBUG_IMAGE:
+			pyplot.figure(dpi=240, figsize=(4, 6))
+			pyplot.tight_layout()
 
+	def pixelToWorld(self, x, y):
+		# (minus one to w/h because the rightmost pixel should be inclusive of the right edge)
+		rx = lerp(x,0, self.logicalImageSize[0] - 1,self.data["x1"], self.data["x2"])
+		ry = lerp(y,0, self.logicalImageSize[1] - 1,self.data["y2"], self.data["y1"])
+		# print(f"px({x},{y})->wr({rx},{ry})")
+		return (rx, ry)
+
+	def worldToPixel(self, x, y):
+		rx = lerp(x, self.data["x1"], self.data["x2"], 0, self.logicalImageSize[0] - 1)
+		ry = lerp(y, self.data["y2"], self.data["y1"], 0, self.logicalImageSize[1] - 1)
+		# print(f"wr({x},{y})->px({rx},{ry})")
+		return (round(rx), round(ry))
 
 	def _debugImage(self, img, text):
 		if not DEBUG_IMAGE: return
-		pyplot.subplot(1, 5, self._debugIdx)
+		pyplot.subplot(5, 2, self._debugIdx)
 		self._debugIdx += 1
 		pyplot.axis('off')
 		pyplot.imshow(img, 'gray')
 		pyplot.title(text)
 
-	def process(self):
-		print(f"Looking at {self.tileName} image is {self.image.shape}")
+	def _pickBGColor(self, grayscale, colorImage):
+		fallbackColor = (127, 127, 127, 255)
 
-		origWidth = self.image.shape[1]
-		origHeight = self.image.shape[0]
+		brighterBits = colorImage[grayscale > 127]
+		if len(brighterBits):
+			color = np.median(brighterBits, axis=0)
+		else:
+			color = fallbackColor
+
+		# This shouldn't be needed but I guess it is:
+		color = (int(color[0]), int(color[1]), int(color[2]), int(color[3]))
+
+		if sum(color[0:3]) < 127 * 3: color = fallbackColor
+
+		return color
+
+	def _paintTransitions(self):
+		"""Paints color on the non-door transitions to help with visuals"""
+
+		# self.pixelToWorld(0, 0)
+		# self.pixelToWorld(self.logicalImageSize[0] - 1, self.logicalImageSize[1] - 1)
+		# self.worldToPixel(self.data["x1"], self.data["y2"])
+		# self.worldToPixel(self.data["x2"], self.data["y1"])
+
+		for transition in self.data["transitions"]:
+			x, y, w, h = transition["x"], transition["y"], transition["w"], transition["h"]
+			if w * h <= 0: continue
+			dir = transition["id"][:-1].split("[")[1][:-1] # "left" from "Crossroads_10[left1]"
+			if dir not in ("top", "bottom", "left", "right"): continue
+
+			x1, y1 = self.worldToPixel(x - w / 2, y + h / 2)
+			x2, y2 = self.worldToPixel(x + w / 2, y - h / 2)
+
+			match dir:
+				case "top": y1 = 0
+				case "bottom": y2 = self.image.shape[0] - 1
+				case "left": x1 = 0
+				case "right": x2 =  self.image.shape[1] - 1
+
+			# try to find a good color
+			color = self._pickBGColor(self.grayscale[y1:y2, x1:x2], self.image[y1:y2, x1:x2])
+
+			# print(f"{transition['id']} going {dir} at {x, y, w, h} to paint in {x1, y1, x2, y2} with {color} maybe from {maxLoc}={maxVal}")
+			cv.rectangle(self.image, (x1, y1), (x2, y2), color=color, thickness=cv.FILLED)
+
+
+	def process(self):
+		print(f"Looking at {self.tileName} image is {self.image.shape[1]}x{self.image.shape[0]}")
 
 		# kill any existing alpha
 		self.image[:, :, 3] = 255
 
-		grayscale = cv.cvtColor(self.image, cv.COLOR_RGB2GRAY)
+		grayscale = self.grayscale = cv.cvtColor(self.image, cv.COLOR_RGB2GRAY)
 		self._debugImage(grayscale, "grayscale")
 
 
@@ -71,6 +135,11 @@ class TileHandler:
 		# cv.drawContours(mask, contours, -1, (127,), cv.FILLED)
 
 		self._debugImage(mask, "borders")
+
+		# With the mask calculated, make some last-minute visual changes
+		self._paintTransitions()
+		self._debugImage(self.image, "postPaint")
+
 
 		# Clear everything we're not keeping
 		self.image[mask == 0] = (0, 0, 0, 0)
@@ -91,6 +160,7 @@ class TileHandler:
 		# cv.rectangle(self.image, (left, top), (right, bottom), (0, 255, 0, 255), 2)
 
 		# Crop and scale image
+		print(f"Will crop from (0, 0):({self.image.shape[1]}, {self.image.shape[0]}) to ({left}, {top}):({right}, {bottom})")
 		self.image = self.image[top:bottom, left:right]
 
 		# Color space conversion (e.g. gamma sRGB <-> linear sRGB) in OpenCV is kinda a mess
@@ -109,21 +179,18 @@ class TileHandler:
 		self._debugImage(self.image, "final")
 
 		# Update image -> world mapping in metadata
-		self.data["x1"], self.data["x2"] = np.interp(
-			(left, right),
-			(0, origWidth),
-			(self.data["x1"], self.data["x2"]),
+		newCorners = (
+			self.pixelToWorld(left, top),
+			self.pixelToWorld(right, bottom),
 		)
-		self.data["y1"], self.data["y2"] = np.interp(
-			(top, bottom),
-			(0, origHeight),
-			(self.data["y1"], self.data["y2"]),
-		)
+		((self.data["x1"], self.data["y2"]), (self.data["x2"], self.data["y1"])) = newCorners
+		self.logicalImageSize = (self.image.shape[1], self.image.shape[0])
 
 		with open(outputFolder + "/" + self.tileName + ".json", "wt") as f:
 			json.dump(self.data, f, indent=2)
 
-		if DEBUG_IMAGE: pyplot.show()
+		if DEBUG_IMAGE:
+			pyplot.show()
 
 
 
