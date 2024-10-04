@@ -81,7 +81,6 @@ To help visualize the room arrangement a few different view options are provided
 Map:
 
 - Uncomment the bit about the MappingCamera in TangledMapManager.Start and make a local build
-- Make sure you have more than one monitor
 - Start game, load an unrandomized save
 - Enable noclip and invincible via DebugMod
 - ctrl+shift+F11

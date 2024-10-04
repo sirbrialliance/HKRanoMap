@@ -43,8 +43,8 @@ Next
 	- skip scenes
 		- Cinematic_*, Dream_Final,
 
-	- exported images have transparency from the in-game buffer, should be opaque
-	- probably burn off all the black around the edges and just add back some border
+	- xx exported images have transparency from the in-game buffer, should be opaque
+	- xx probably burn off all the black around the edges and just add back some border
 
 
 - Works with Archipelago?

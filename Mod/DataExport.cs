@@ -9,6 +9,8 @@ using ItemChanger.Locations;
 using ItemChanger.Locations.SpecialLocations;
 using RandomizerMod.RandomizerData;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using USceneManager = UnityEngine.SceneManagement.SceneManager;
 
 namespace TangledMapView {
 public class DataExport {
@@ -48,17 +50,27 @@ public class DataExport {
 		return true;
 	}
 
-	public static IEnumerable<string> GetGameScenes() {
+	public static IEnumerable<string> GetAllScenes() {
 		//Can't use UnitySceneManager to grab data, unloaded scenes don't have names.
-		//So we'll...just steal the list from ItemChanger.
-		var consts = typeof(ItemChanger.SceneNames).GetFields(BindingFlags.Public | BindingFlags.Static);
-		foreach (var fieldInfo in consts) {
-			if (fieldInfo.FieldType != typeof(string)) continue;
-			var name = fieldInfo.GetRawConstantValue() as string;
-			if (string.IsNullOrEmpty(name)) continue;
-			if (!WantScene(name)) continue;
+		//Edit, but this method works:
+		for (int i = 0; i < USceneManager.sceneCountInBuildSettings; i++) {
+			var path = SceneUtility.GetScenePathByBuildIndex(i);
+			var name = Path.GetFileNameWithoutExtension(path);
 			yield return name;
 		}
+
+		//Old way: steal the list from ItemChanger.
+		// var consts = typeof(ItemChanger.SceneNames).GetFields(BindingFlags.Public | BindingFlags.Static);
+		// foreach (var fieldInfo in consts) {
+		// 	if (fieldInfo.FieldType != typeof(string)) continue;
+		// 	var name = fieldInfo.GetRawConstantValue() as string;
+		// 	if (string.IsNullOrEmpty(name)) continue;
+		// 	yield return name;
+		// }
+	}
+
+	public static IEnumerable<string> GetGameScenes() {
+		return GetAllScenes().Where(WantScene);
 	}
 
 	public static void ExportData() {

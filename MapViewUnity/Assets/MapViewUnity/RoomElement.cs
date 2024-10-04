@@ -13,6 +13,11 @@ public class RoomElement {
 	/// Position in room.
 	/// </summary>
 	public float x, y, z;
+	/// <summary>
+	/// Bounding box width/height/depth for item.
+	/// May be zero.
+	/// </summary>
+	public float w, h, d;
 
 	[JsonIgnore]
 	public Vector3 Position {
@@ -21,6 +26,16 @@ public class RoomElement {
 			x = value.x;
 			y = value.y;
 			z = value.z;
+		}
+	}
+
+	[JsonIgnore]
+	public Vector3 Size {
+		get => new Vector3(w, h, d);
+		set {
+			w = value.x;
+			h = value.y;
+			d = value.z;
 		}
 	}
 }

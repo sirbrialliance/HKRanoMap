@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using ItemChanger;
 using Modding;
 using Modding.Converters;
@@ -33,22 +34,20 @@ public class MappingCamera : MonoBehaviour {
 	public static MappingCamera Create(TangledMapViewMod mod) {
 		mod.LogDebug("Creating MappingCamera");
 
-		Display.displays[1].Activate();
-		Display.displays[1].SetParams(1920, 1080, 0, 0);
-
 		var go = new GameObject("MappingCamera");
 		DontDestroyOnLoad(go);
 		var ret = go.AddComponent<MappingCamera>();
 		ret.mod = mod;
 		var cam = ret.camera = go.AddComponent<Camera>();
 
-		cam.targetDisplay = 1;
 		cam.clearFlags = CameraClearFlags.Color;
 		cam.backgroundColor = new Color(0, 0, 0);
 		cam.orthographic = true;
 		cam.orthographicSize = LiveViewZoom;
 		cam.nearClipPlane = -1;
 		cam.farClipPlane = 1000;
+		cam.depth = 100;
+		cam.rect = new Rect(.8f, .8f, .15f, .15f);
 
 		/** HK Layers:
 			0 -> Default
@@ -102,6 +101,8 @@ public class MappingCamera : MonoBehaviour {
 			Camera.main.cullingMask &= ~(1 << Layer);
 		}
 
+		// ret.DebugSomeInfo();
+
 		return ret;
 	}
 
@@ -129,6 +130,43 @@ public class MappingCamera : MonoBehaviour {
 		ModHooks.DrawBlackBordersHook += OnDrawBorders;
 
 		Directory.CreateDirectory(DataExport.OutFolder);
+	}
+
+	private void DebugSomeInfo() {
+		var sb = new StringBuilder();
+		var allScenes = new List<string>();
+		for (int i = 0; i < USceneManager.sceneCountInBuildSettings; i++) {
+			var s = USceneManager.GetSceneByBuildIndex(i);
+			var p = SceneUtility.GetScenePathByBuildIndex(i);
+			allScenes.Add($"{s.name} {s.path} {s.handle} {s.buildIndex} {s.isLoaded} {s.rootCount} {p}");
+		}
+		allScenes.Sort();
+		sb.Append($"Build scenes ({USceneManager.sceneCountInBuildSettings}): {string.Join(", ", allScenes)}\n");
+
+
+		allScenes.Clear();
+		for (int i = 0; i < USceneManager.sceneCount; i++) {
+			var s = USceneManager.GetSceneAt(i);
+			allScenes.Add(s.name + " " + s.path);
+		}
+		allScenes.Sort();
+		sb.Append($"Loaded scenes: {string.Join(", ", allScenes)}\n");
+
+		if (Hero) {
+			sb.Append("Hero renderers:\n");
+			foreach (var renderer in Hero.GetComponentsInChildren<Renderer>()) {
+				var path = "";
+				var p = renderer.transform;
+				while (p != Hero.transform) {
+					path += p.name + "<-";
+					p = p.parent;
+				}
+				sb.Append($"{renderer.enabled && renderer.gameObject.activeInHierarchy} {renderer.GetType().Name}: {path}\n");
+			}
+		}
+
+
+		mod.Log(sb.ToString());
 	}
 
 
@@ -164,9 +202,7 @@ public class MappingCamera : MonoBehaviour {
 
 		// mod.Log($"CleanupView state: {Hero.transitionState} and isT {Hero.cState.transitioning}");
 
-		while (Hero.cState.transitioning) {
-			yield return null;
-		}
+		while (DoingLoading) yield return null;
 
 		yield return null;
 		yield return null;
@@ -214,6 +250,7 @@ public class MappingCamera : MonoBehaviour {
 			yield break;
 		}
 
+
 		//Camera setup
 		//Doing the extra RT dance is annoying, but it does let us render things larger than the screen when needed.
 		var buf = new RenderTexture(width, height, 24);
@@ -221,6 +258,8 @@ public class MappingCamera : MonoBehaviour {
 		camera.transform.position = currentBorders.center;
 		//"orthographicSize is half the size of the vertical viewing volume"
 		camera.orthographicSize = currentBorders.size.y / 2f;
+		var usualRect = camera.rect;
+		camera.rect = new Rect(0, 0, 1, 1);
 
 
 		//Render to buffer, pull image
@@ -241,6 +280,7 @@ public class MappingCamera : MonoBehaviour {
 		Destroy(tex);
 		Destroy(buf);
 		camera.orthographicSize = LiveViewZoom;
+		camera.rect = usualRect;
 
 		var roomData = GetRoomData();
 		var dataFileName = $"{DataExport.OutFolder}/{SceneName}.json";
@@ -283,10 +323,20 @@ public class MappingCamera : MonoBehaviour {
 				throw new Exception($"Can't find door for {randoTransition.Name}");
 			}
 
+			var position = sceneObject.transform.position;
+			var size = Vector3.zero;
+			var collider = sceneObject.GetComponent<Collider2D>();
+			if (collider) {
+				var bounds = collider.bounds;
+				position = bounds.center;
+				size = bounds.size;
+			}
+
 			ret.transitions.Add(new RoomTransition {
 				id = randoTransition.Name,
 				srcDoor = randoTransition.DoorName,
-				Position = sceneObject.transform.position,
+				Position = position,
+				Size = size,
 				destDoor = randoTransition.VanillaTarget,
 			});
 		}
@@ -308,33 +358,57 @@ public class MappingCamera : MonoBehaviour {
 		}
 
 		if (Input.GetKeyDown(KeyCode.F9)) {
-			foreach (var renderer in Hero.GetComponentsInChildren<Renderer>()) {
-				var path = "";
-				var p = renderer.transform;
-				while (p != Hero.transform) {
-					path += p.name + "<-";
-					p = p.parent;
-				}
-				Debug.Log($"Renderer: {path} it's a {renderer.GetType().FullName}");
-			}
+			DebugSomeInfo();
 		}
+
 	}
 
+	private bool DoingLoading => Hero.cState.transitioning || GameManager.instance.IsLoadingSceneTransition;
 
 	private IEnumerator DoGrandTour() {
 		doingGrandTour = true;
+
+		var allScenes = new HashSet<string>(DataExport.GetAllScenes());
+
+		var heroCollider = Hero.GetComponent<Collider2D>();
+		var heroBoxCollider = Hero.transform.Find("HeroBox").GetComponent<Collider2D>();
+		heroCollider.enabled = false;
+		heroBoxCollider.enabled = false;
 
 		foreach (var name in DataExport.GetGameScenes()) {
 			if (File.Exists($"{DataExport.OutFolder}/{name}.png")) continue;
 
 			mod.Log($"Load scene for image grab: {name}");
+
 			USceneManager.LoadScene(name, LoadSceneMode.Single);
+
+			//Do we have a boss scene to load too?
+			var bossSceneName = name + "_boss";
+			if (allScenes.Contains(bossSceneName)) {
+				mod.Log($"Also load boss scene");
+				USceneManager.LoadScene(bossSceneName, LoadSceneMode.Additive);
+			}
+
+			// Too easy to get it to break:
+			// while (DoingLoading) yield return null;
+			// GameManager.instance.BeginSceneTransition(new GameManager.SceneLoadInfo {
+			// 	SceneName = name,
+			// 	AlwaysUnloadUnusedAssets = false,
+			// 	EntryDelay = 0,
+			// 	PreventCameraFadeOut = true,
+			// 	Visualization = GameManager.SceneLoadVisualizations.Default,
+			// });
+
+			while (DoingLoading) yield return null;
 
 			yield return StartCoroutine(SnapScene());
 			yield return new WaitForSeconds(.1f);
 
 			if (Input.anyKey) break;
 		}
+
+		heroCollider.enabled = true;
+		heroBoxCollider.enabled = true;
 
 		mod.Log("Ended the grand tour!");
 
