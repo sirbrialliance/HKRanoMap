@@ -3,22 +3,31 @@
 Next
 -------------------------------------------------------------------------
 
-- map revamp
-	- Current QuadTree impl is slow and is rebuilt every frame(!) per force that uses it
-		- can we hijack maybe a corner of the Unity 3d physics scene and just get trigger overlaps?
-		- or do we need to import some wort of physics broadphase collision hander? (I like bullet, but don't want to deal with native)
-		- nn can't use normal Unity physics, can't have seperate settings for our scene, and don't want to break any base game stuff
-	- maybe adjust door align to act like a spring joint in a certain distance and angle
+- Let's simplify the code I have to do:
+	- Ditch trying to render in Unity
+	- Get everything working with current version
+	- (Maybe) Switch from SVG to WebGL rendering
 
+- Map tiles
+	- Postprocess
 
-	- shader for lines, so they get gradient
-	- shader for tiles, so they are z-buffer and normal opaque
-	- need to use fancy smart "line" shaders for better performance?
+	- Would be nice to have light areas for entrance/exits
 
-	- maybe a list with the map of previewed items and their locations, most important first
-		- maybe importance = number of times there's a logic condition that requires it
+	- Empty images:
+		- Abyss_22
+	- Bad bounds:
+		- Abyss_21
+		- Deepnest_26
+		- Deepnest_East_11
+		- Hive_04
+	- Black boxes in dark rooms (no lantern?)
+
+- Path finding
+	- Use actual logic for each room-to-room connection
+
 
 - Data
+	- Additive load and {sceneName}_Boss if it exists as we go
 	- Missing items:
 		- All Boss essence aren't pulled in (e.g. Gorb, Xero, Zote)
 		- Lore_Tablet-World_Sense
@@ -37,6 +46,9 @@ Next
 	- exported images have transparency from the in-game buffer, should be opaque
 	- probably burn off all the black around the edges and just add back some border
 
+
+- Works with Archipelago?
+
 - Live view
 	- rename TangledMapManager -> LiveMarkerManager
 	- add "waypoints" from logic
@@ -51,11 +63,6 @@ Next
 
 
 	- maybe add stats/number on outgoing transitins about what's available there?
-
-- Auto item preview?
-	- auto-reveal geo/grub (or secret fake)/soul world items if oyu are close enough
-		- set to previewed if in camera view frustum for 500ms
-	- may need to seperate my "previews" from logic previews. e.g. grub vs. mimic. "geo rock", but is it 15 geo? 420 geo?
 
 
 - docs
